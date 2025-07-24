@@ -1,2 +1,7 @@
 openai 
 python-dotenv
+requests
+pdfplumber
+beautifulsoup4
+playwright
+pytest
