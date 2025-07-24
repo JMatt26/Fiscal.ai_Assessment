@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Dict
+import os
 
 COMPANIES = [
     {
@@ -79,3 +80,15 @@ def get_pdf_links(company_url: str) -> List[str]:
 
     
     return [year_to_url[yr] for yr in YEARS if yr in year_to_url]
+
+
+def download_pdf(url: str, output_dir: str, company_name: str):
+    company_dir = os.path.join(output_dir, company_name)
+    os.makedirs(company_dir, exist_ok=True)
+    filename = os.path.join(company_dir, url.split("/")[-1])
+    resp = requests.get(url)
+    resp.raise_for_status()
+    with open(filename, "wb") as f:
+        f.write(resp.content)
+    return filename
+
