@@ -1,9 +1,7 @@
 import pytest
-from utils import get_pdf_links, download_pdf
-from utils import COMPANIES
+from utils.acquire_pdf import get_pdf_links, download_pdf
+from utils.constants import COMPANIES, YEARS
 import os
-
-YEARS = [str(y) for y in range(2024, 2013, -1)]
 
 def test_get_pdf_links():
     for company in COMPANIES:

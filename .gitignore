@@ -1,2 +1,7 @@
 .env
-.venv
+.venv*
+trash.py 
+trial.py 
+annual_report_pdfs
+reports
+__pycache__
