@@ -5,21 +5,24 @@ import requests
 import pandas as pd
 from urllib.parse import urljoin
 from dotenv import load_dotenv
+import openai
 
-from langchain.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
+from langchain_community.llms import OpenAI
+from langchain_community.chat_models import ChatOpenAI
 
 # Load environment
 load_dotenv()
 
 # Load API key
 api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = api_key
 
 # Initialize LLM
-CLIENT = OpenAI(openai_api_key=api_key, temperature=0, model_name="gpt-4")
+CLIENT = ChatOpenAI(openai_api_key=api_key, temperature=0, model_name="gpt-4o")
 
 # Constants
 years = [str(y) for y in range(2024, 2014, -1)]
