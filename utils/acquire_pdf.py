@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Dict
 import os
-from constants import YEARS
+from utils.constants import YEARS
 
 def get_pdf_links(company_url: str) -> List[str]:
     session = requests.Session()

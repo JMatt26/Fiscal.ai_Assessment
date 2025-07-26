@@ -12,10 +12,10 @@ COMPANIES = [
         "annual_reports_url": "https://www.annualreports.com/Company/volkswagen-group",
     },
     {
-        "name": "LVMH",
-        "ticker": "MC.PA",
-        "investor_relations_url": "https://www.lvmh.com/en/investors",
-        "annual_reports_url": "https://www.annualreports.com/Company/lvmh",
+        "name": "Anheuser-Busch Inbev",
+        "ticker": "BUD",
+        "investor_relations_url": "https://www.ab-inbev.com/investors",
+        "annual_reports_url": "https://www.annualreports.com/Company/anheuser-busch-inbev-sa",
     }
 ]
 
