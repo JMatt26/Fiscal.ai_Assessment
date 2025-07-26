@@ -5,3 +5,11 @@ pdfplumber
 beautifulsoup4
 playwright
 pytest
+camelot-py
+farm-haystack[basic]
+setuptools
+torch
+langdetect
+nltk
+farm-haystack[inference]
+transformers #==4.28.1
