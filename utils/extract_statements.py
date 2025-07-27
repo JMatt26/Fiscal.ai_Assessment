@@ -50,21 +50,16 @@ def extract_relevant_tables(pdf_path: str, keywords: list[str]) -> list[tuple[in
                         matches.append((i + 1, table))
     return matches
 
-def run_llm_on_text(statement_type: str, text_chunk: str):
+def run_llm_on_text(statement_type: str, text_chunk: str, year: str):
     """
     Run the LLM with a strict table-focused financial prompt.
     """
     prompt_template = PromptTemplate(
         input_variables=["statement_type", "text_chunk"],
-        template="""
-You are a financial analyst. Extract only the structured numerical table from the following financial report text.
-
-Focus specifically on a {statement_type}. Return the result strictly as **valid JSON** in this format:
-[
-  {{ "Line Item": "...", "Value(s)": "..." }},
-  ...
-]
-
+        template=f"""
+You are a financial analyst. Given an annual report for the {year} year, extract all information, items and values, from the {statement_type}. 
+Return the result strictly as **valid JSON**. 
+Ensure that one line item has only one value, and that value is for the {year} year.
 DO NOT include markdown, explanations, or commentary. Only extract relevant numerical data rows.
 ------------------
 {text_chunk}
@@ -76,7 +71,6 @@ DO NOT include markdown, explanations, or commentary. Only extract relevant nume
         "statement_type": statement_type,
         "text_chunk": text_chunk
     })
-
 
 def process_company(pdf_path: str, company_name: str, report_year: str):
     os.makedirs("outputs", exist_ok=True)
@@ -90,28 +84,44 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
 
         for page_num, text in pages:
             try:
-                response = run_llm_on_text(statement_type, text)
+                response = run_llm_on_text(statement_type, text, report_year)
                 content = response.content if hasattr(response, "content") else response
 
                 # Clean LLM response
                 cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
-                parsed = pd.read_json(StringIO(cleaned_json))
+                try:
+                    parsed = pd.read_json(StringIO(cleaned_json))
+                except ValueError:
+                    try:
+                        # Try interpreting it as a single row of scalar values
+                        parsed_dict = eval(cleaned_json)
+                        if isinstance(parsed_dict, dict):
+                            parsed = pd.DataFrame([parsed_dict])
+                        else:
+                            raise
+                    except Exception as inner:
+                        print(f"Secondary parse error: {inner}")
+                        print("---- INVALID JSON ----")
+                        print(cleaned_json)
+                        continue
 
-                for _, row in parsed.iterrows():
-                    item = row["Line Item"]
-                    value = row["Value(s)"]
+                if "Line Item" in parsed.columns and "Value(s)" in parsed.columns:
+                    # Handle expected schema
+                    for _, row in parsed.iterrows():
+                        item = row["Line Item"]
+                        value = row["Value(s)"]
 
-                    # Normalize values: single string or dict
-                    if isinstance(value, dict):
-                        for year, v in value.items():
-                            if item not in data_rows:
-                                data_rows[item] = {}
-                            data_rows[item][year] = v
-                    else:
-                        # Fallback: treat report_year as column
-                        if item not in data_rows:
-                            data_rows[item] = {}
-                        data_rows[item][report_year] = value
+                        if isinstance(value, dict):
+                            for year, v in value.items():
+                                data_rows.setdefault(item, {})[year] = v
+                        else:
+                            data_rows.setdefault(item, {})[report_year] = value
+                else:
+                    # Fallback: treat each column as a line item with single value
+                    for col in parsed.columns:
+                        value = parsed[col].iloc[0] if not parsed[col].isnull().all() else None
+                        if value is not None:
+                            data_rows.setdefault(col, {})[report_year] = value
 
                 print(f"Page {page_num} processed.")
 
@@ -129,7 +139,73 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
 
     writer.close()
 
+# def process_company(pdf_path: str, company_name: str, report_year: str):
+#     os.makedirs("outputs", exist_ok=True)
+#     writer = pd.ExcelWriter(f"outputs/{company_name}.xlsx", engine="openpyxl")
 
+#     for statement_type, keywords in STATEMENT_TYPES.items():
+#         print(f"Processing {statement_type} for {company_name} {report_year}...")
+
+#         pages = extract_relevant_pages(pdf_path, keywords)
+#         data_rows = {}
+
+#         for page_num, text in pages:
+#             try:
+#                 response = run_llm_on_text(statement_type, text, report_year)
+#                 content = response.content if hasattr(response, "content") else response
+
+#                 # Clean LLM response
+#                 cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
+
+#                 try: 
+#                     parsed = pd.read_json(StringIO(cleaned_json))
+#                 except ValueError:
+#                     try:
+#                         # Try interpreting it as a single row of scalar values
+#                         parsed_dict = eval(cleaned_json)
+#                         if isinstance(parsed_dict, dict):
+#                             parsed = pd.DataFrame([parsed_dict])
+#                         else:
+#                             raise
+#                     except Exception as inner:
+#                         print(f"Secondary parse error: {inner}")
+#                         print("---- INVALID JSON ----")
+#                         print(cleaned_json)
+#                         continue
+
+#                 if "Line Item" in parsed.columns and "Value(s)" in parsed.columns:
+#                     # Handle expected schema
+#                     for _, row in parsed.iterrows():
+#                         item = row["Line Item"]
+#                         value = row["Value(s)"]
+
+#                         if isinstance(value, dict):
+#                             for year, v in value.items():
+#                                 data_rows.setdefault(item, {})[year] = v
+#                         else:
+#                             data_rows.setdefault(item, {})[report_year] = value
+#                     else:
+#                         # Fallback: treat each column as a line item with single value
+#                         for col in parsed.columns:
+#                             value = parsed[col].iloc[0] if not parsed[col].isnull().all() else None
+#                             if value is not None:
+#                                 data_rows.setdefault(col, {})[report_year] = value
+
+#                         print(f"Page {page_num} processed.")
+
+#             except Exception as e:
+#                 print(f"Error processing page {page_num}: {e}")
+#                 print("---- RAW CONTENT ----")
+#                 print(content)
+
+#         if data_rows:
+#             df_sheet = pd.DataFrame.from_dict(data_rows, orient="index").reset_index()
+#             df_sheet = df_sheet.rename(columns={"index": "Line Item"})
+#             df_sheet.to_excel(writer, sheet_name=statement_type[:31], index=False)
+#         else:
+#             print(f"No data extracted for {statement_type}.")
+
+#     writer.close()
 
 # def process_company(pdf_path: str, company_name: str, report_year: str):
 #     os.makedirs("outputs", exist_ok=True)
