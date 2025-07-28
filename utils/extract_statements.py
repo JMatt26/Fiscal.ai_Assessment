@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import pdfplumber
 import pandas as pd
 from utils.constants import COMPANIES, YEARS
@@ -72,9 +73,15 @@ DO NOT include markdown, explanations, or commentary. Only extract relevant nume
         "text_chunk": text_chunk
     })
 
+
 def process_company(pdf_path: str, company_name: str, report_year: str):
     os.makedirs("outputs", exist_ok=True)
-    writer = pd.ExcelWriter(f"outputs/{company_name}.xlsx", engine="openpyxl")
+    excel_path = f"outputs/{company_name}.xlsx"
+
+    if os.path.exists(excel_path):
+        writer = pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="overlay")
+    else:
+        writer = pd.ExcelWriter(excel_path, engine="openpyxl")
 
     for statement_type, keywords in STATEMENT_TYPES.items():
         print(f"Processing {statement_type} for {company_name} {report_year}...")
@@ -86,18 +93,15 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
             try:
                 response = run_llm_on_text(statement_type, text, report_year)
                 content = response.content if hasattr(response, "content") else response
-
-                # Clean LLM response
                 cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
+
                 try:
                     parsed = pd.read_json(StringIO(cleaned_json))
                 except ValueError:
                     try:
-                        # Try interpreting it as a single row of scalar values
                         parsed_dict = eval(cleaned_json)
-                        if isinstance(parsed_dict, dict):
-                            parsed = pd.DataFrame([parsed_dict])
-                        else:
+                        parsed = pd.DataFrame([parsed_dict]) if isinstance(parsed_dict, dict) else None
+                        if parsed is None:
                             raise
                     except Exception as inner:
                         print(f"Secondary parse error: {inner}")
@@ -105,19 +109,19 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
                         print(cleaned_json)
                         continue
 
+                if parsed is None:
+                    continue
+
                 if "Line Item" in parsed.columns and "Value(s)" in parsed.columns:
-                    # Handle expected schema
                     for _, row in parsed.iterrows():
                         item = row["Line Item"]
                         value = row["Value(s)"]
-
                         if isinstance(value, dict):
                             for year, v in value.items():
                                 data_rows.setdefault(item, {})[year] = v
                         else:
                             data_rows.setdefault(item, {})[report_year] = value
                 else:
-                    # Fallback: treat each column as a line item with single value
                     for col in parsed.columns:
                         value = parsed[col].iloc[0] if not parsed[col].isnull().all() else None
                         if value is not None:
@@ -131,122 +135,94 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
                 print(content)
 
         if data_rows:
-            df_sheet = pd.DataFrame.from_dict(data_rows, orient="index").reset_index()
-            df_sheet = df_sheet.rename(columns={"index": "Line Item"})
-            df_sheet.to_excel(writer, sheet_name=statement_type[:31], index=False)
+            new_df = pd.DataFrame.from_dict(data_rows, orient="index").reset_index()
+            new_df = new_df.rename(columns={"index": "Line Item"})
+
+            # Read existing sheet if it exists
+            try:
+                existing_df = pd.read_excel(excel_path, sheet_name=statement_type[:31])
+                # merged_df = pd.merge(existing_df, new_df, on="Line Item", how="outer")
+                # Preserve original row order from existing_df
+                existing_df["__order"] = range(len(existing_df))
+
+                merged_df = pd.merge(existing_df, new_df, on="Line Item", how="outer")
+
+                # Restore order if possible
+                if "__order" in merged_df.columns:
+                    merged_df = merged_df.sort_values("__order").drop(columns="__order")
+            except FileNotFoundError:
+                merged_df = new_df
+            except ValueError:
+                # Sheet doesn't exist yet
+                merged_df = new_df
+
+            merged_df.to_excel(writer, sheet_name=statement_type[:31], index=False)
         else:
             print(f"No data extracted for {statement_type}.")
 
     writer.close()
 
-# def process_company(pdf_path: str, company_name: str, report_year: str):
-#     os.makedirs("outputs", exist_ok=True)
-#     writer = pd.ExcelWriter(f"outputs/{company_name}.xlsx", engine="openpyxl")
 
-#     for statement_type, keywords in STATEMENT_TYPES.items():
-#         print(f"Processing {statement_type} for {company_name} {report_year}...")
+def process_company_multi_year(pdf_paths_in_order: dict[str, str], company_name: str):
+    os.makedirs("outputs", exist_ok=True)
+    statement_dataframes: dict[str, pd.DataFrame] = {}
 
-#         pages = extract_relevant_pages(pdf_path, keywords)
-#         data_rows = {}
+    for report_year, pdf_path in pdf_paths_in_order.items():
+        print(f"Processing {company_name} {report_year}...")
 
-#         for page_num, text in pages:
-#             try:
-#                 response = run_llm_on_text(statement_type, text, report_year)
-#                 content = response.content if hasattr(response, "content") else response
+        for statement_type, keywords in STATEMENT_TYPES.items():
+            print(f"  → {statement_type}")
+            pages = extract_relevant_pages(pdf_path, keywords)
+            data_rows = {}
 
-#                 # Clean LLM response
-#                 cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
+            for page_num, text in pages:
+                try:
+                    response = run_llm_on_text(statement_type, text, report_year)
+                    content = response.content if hasattr(response, "content") else response
+                    cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
 
-#                 try: 
-#                     parsed = pd.read_json(StringIO(cleaned_json))
-#                 except ValueError:
-#                     try:
-#                         # Try interpreting it as a single row of scalar values
-#                         parsed_dict = eval(cleaned_json)
-#                         if isinstance(parsed_dict, dict):
-#                             parsed = pd.DataFrame([parsed_dict])
-#                         else:
-#                             raise
-#                     except Exception as inner:
-#                         print(f"Secondary parse error: {inner}")
-#                         print("---- INVALID JSON ----")
-#                         print(cleaned_json)
-#                         continue
+                    try:
+                        parsed = pd.read_json(StringIO(cleaned_json))
+                    except ValueError:
+                        parsed_dict = json.loads(cleaned_json)
+                        if isinstance(parsed_dict, dict):
+                            parsed = pd.DataFrame([parsed_dict])
+                        else:
+                            raise
 
-#                 if "Line Item" in parsed.columns and "Value(s)" in parsed.columns:
-#                     # Handle expected schema
-#                     for _, row in parsed.iterrows():
-#                         item = row["Line Item"]
-#                         value = row["Value(s)"]
+                    if "Line Item" in parsed.columns and "Value(s)" in parsed.columns:
+                        for _, row in parsed.iterrows():
+                            item = row["Line Item"]
+                            value = row["Value(s)"]
+                            data_rows.setdefault(item, {})[report_year] = value
+                    else:
+                        for col in parsed.columns:
+                            value = parsed[col].iloc[0] if not parsed[col].isnull().all() else None
+                            if value is not None:
+                                data_rows.setdefault(col, {})[report_year] = value
 
-#                         if isinstance(value, dict):
-#                             for year, v in value.items():
-#                                 data_rows.setdefault(item, {})[year] = v
-#                         else:
-#                             data_rows.setdefault(item, {})[report_year] = value
-#                     else:
-#                         # Fallback: treat each column as a line item with single value
-#                         for col in parsed.columns:
-#                             value = parsed[col].iloc[0] if not parsed[col].isnull().all() else None
-#                             if value is not None:
-#                                 data_rows.setdefault(col, {})[report_year] = value
+                    print(f"    ✓ Page {page_num} processed.")
 
-#                         print(f"Page {page_num} processed.")
+                except Exception as e:
+                    print(f"    ✗ Error processing page {page_num}: {e}")
+                    print("    RAW LLM Output:\n", content)
 
-#             except Exception as e:
-#                 print(f"Error processing page {page_num}: {e}")
-#                 print("---- RAW CONTENT ----")
-#                 print(content)
+            if data_rows:
+                # Build DataFrame with a single column (report_year) and Line Item as index
+                df_new = pd.DataFrame.from_dict(data_rows, orient="index", columns=[report_year])
+                df_new.index.name = "Line Item"
+                
+                if statement_type not in statement_dataframes:
+                    statement_dataframes[statement_type] = df_new
+                else:
+                    # Join without sorting, just stacking columns in order
+                    statement_dataframes[statement_type] = statement_dataframes[statement_type].join(
+                        df_new, how="outer"
+                    )
 
-#         if data_rows:
-#             df_sheet = pd.DataFrame.from_dict(data_rows, orient="index").reset_index()
-#             df_sheet = df_sheet.rename(columns={"index": "Line Item"})
-#             df_sheet.to_excel(writer, sheet_name=statement_type[:31], index=False)
-#         else:
-#             print(f"No data extracted for {statement_type}.")
-
-#     writer.close()
-
-# def process_company(pdf_path: str, company_name: str, report_year: str):
-#     os.makedirs("outputs", exist_ok=True)
-#     writer = pd.ExcelWriter(f"outputs/{company_name}.xlsx", engine="openpyxl")
-
-#     for statement_type, keywords in STATEMENT_TYPES.items():
-#         print(f"Processing {statement_type} for {company_name} {report_year}...")
-
-#         pages = extract_relevant_pages(pdf_path, keywords)
-#         line_item_map = {}
-
-#         for page_num, text in pages:
-#             try:
-#                 response = run_llm_on_text(statement_type, text)
-#                 content = response.content if hasattr(response, "content") else response
-
-#                 # Clean LLM response: remove ```json blocks if present
-#                 cleaned_json = re.sub(r"^```(?:json)?\s*|```$", "", content.strip(), flags=re.MULTILINE)
-#                 df = pd.read_json(StringIO(cleaned_json))
-
-#                 for _, row in df.iterrows():
-#                     item = row["Line Item"]
-#                     value = row["Value(s)"]
-#                     line_item_map[item] = value
-
-#                 print(f"Page {page_num} processed.")
-
-#             except Exception as e:
-#                 print(f"Error processing page {page_num}: {e}")
-#                 print("---- RAW CLEANED JSON ----")
-#                 print(content)
-
-#         if line_item_map:
-#             # One column per report, like "2024"
-#             df_sheet = pd.DataFrame.from_dict(line_item_map, orient="index", columns=[report_year])
-#             df_sheet.index.name = "Line Item"
-#             df_sheet.reset_index(inplace=True)
-
-#             # Trim sheet name to 31 characters max (Excel limit)
-#             df_sheet.to_excel(writer, sheet_name=statement_type[:31], index=False)
-#         else:
-#             print(f"No data extracted for {statement_type}.")
-
-#     writer.close()
+    # Write combined data per statement
+    writer = pd.ExcelWriter(f"outputs/{company_name}.xlsx", engine="openpyxl")
+    for sheet_name, df in statement_dataframes.items():
+        df.reset_index(inplace=True)
+        df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+    writer.close()
