@@ -20,3 +20,9 @@ COMPANIES = [
 ]
 
 YEARS = [str(y) for y in range(2024, 2014, -1)]
+
+STATEMENT_TYPES = {
+    "Income Statement": ["income statement", "statement of operations"],
+    "Balance Sheet": ["balance sheet", "financial position"],
+    "Cash Flow Statement": ["cash flow", "statement of cash flows"]
+}

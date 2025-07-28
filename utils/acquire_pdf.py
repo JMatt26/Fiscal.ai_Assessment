@@ -7,6 +7,16 @@ import os
 from utils.constants import YEARS
 
 def get_pdf_links(company_url: str) -> List[str]:
+    """
+    Get the PDF links for a company's annual reports.
+
+    Args: 
+        company_url: The url of the company's annual reports page.
+
+    Returns:
+        A list of annual report urls from 2024 to 2015.
+    """
+
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0"})
     resp = session.get(company_url, timeout=10)
@@ -61,6 +71,18 @@ def get_pdf_links(company_url: str) -> List[str]:
 
 
 def download_pdf(url: str, output_dir: str, company_name: str):
+    """
+    Download a pdf from a url to a local directory.
+
+    Args:
+        url: The url of the pdf to download.
+        output_dir: The directory to save the pdf to.
+        company_name: The name of the company whose pdf is being downloaded.
+
+    Returns:
+        The path to the downloaded pdf.
+    """
+    
     company_dir = os.path.join(output_dir, company_name)
     os.makedirs(company_dir, exist_ok=True)
     filename = os.path.join(company_dir, url.split("/")[-1])
