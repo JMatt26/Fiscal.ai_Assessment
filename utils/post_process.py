@@ -1,14 +1,15 @@
 import pandas as pd
 
-def prune_excel_to_numeric_rows(input_path: str, output_path: str) -> None:
+def prune_excel_to_numeric_rows(input_path: str, output_path: str):
     """
-    Prunes all rows from all sheets in an Excel file where any value (except the first column) is non-numeric.
+    Prunes all rows from all sheets in an Excel file where any value is non-numeric.
     Saves the cleaned result into a new Excel workbook with the same sheet structure.
     
     Args:
-        input_path (str): Path to the original Excel file.
-        output_path (str): Path to the cleaned Excel file to be written.
+        input_path: Path to the original Excel file.
+        output_path: Path to the cleaned Excel file to be written.
     """
+
     xls = pd.ExcelFile(input_path)
     sheet_names = xls.sheet_names
 

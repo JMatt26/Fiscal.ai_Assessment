@@ -3,22 +3,14 @@ import re
 import json
 import pdfplumber
 import pandas as pd
-from utils.constants import COMPANIES, YEARS
+from utils.constants import STATEMENT_TYPES
 from dotenv import load_dotenv
-# from langchain.prompts import ChatPromptTemplate
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain.chains import LLMChain
 from io import StringIO
 
 load_dotenv()
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
-
-STATEMENT_TYPES = {
-    "Income Statement": ["income statement", "statement of operations"],
-    "Balance Sheet": ["balance sheet", "financial position"],
-    "Cash Flow Statement": ["cash flow", "statement of cash flows"]
-}
 
 def has_table(page):
     return bool(page.extract_tables())
@@ -26,7 +18,15 @@ def has_table(page):
 def extract_relevant_pages(pdf_path: str, keywords: list[str]) -> list[tuple[int, str]]:
     """
     Extract text from a PDF file by matching keywords and filtering out irrelevant or non-tabular pages.
+
+    Args:
+        pdf_path: The path to the pdf file.
+        keywords: A list of keywords to search for in the pdf.
+
+    Returns:
+        A list of tuples, where each tuple contains the page number and the text of the page.
     """
+
     matches = []
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -39,7 +39,15 @@ def extract_relevant_pages(pdf_path: str, keywords: list[str]) -> list[tuple[int
 def extract_relevant_tables(pdf_path: str, keywords: list[str]) -> list[tuple[int, list]]:
     """
     Extract tables from PDF pages containing financial keywords.
+
+    Args:
+        pdf_path: The path to the pdf file.
+        keywords: A list of keywords to search for in the pdf.
+
+    Returns:
+        A list of tuples, where each tuple contains the page number and the tables on the page.
     """
+
     matches = []
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -54,7 +62,16 @@ def extract_relevant_tables(pdf_path: str, keywords: list[str]) -> list[tuple[in
 def run_llm_on_text(statement_type: str, text_chunk: str, year: str):
     """
     Run the LLM with a strict table-focused financial prompt.
+
+    Args:
+        statement_type: The type of statement to extract.
+        text_chunk: The text to extract the statement from.
+        year: The year of the statement.
+
+    Returns:
+        A string of the extracted statement in JSON format.
     """
+
     prompt_template = PromptTemplate(
         input_variables=["statement_type", "text_chunk"],
         template=f"""
@@ -75,6 +92,15 @@ DO NOT include markdown, explanations, or commentary. Only extract relevant nume
 
 
 def process_company(pdf_path: str, company_name: str, report_year: str):
+    """
+    Process a single PDF file for a specific year and save the results to an Excel file.
+
+    Args:
+        pdf_path: The path to the pdf file.
+        company_name: The name of the company.
+        report_year: The year of the report.
+    """
+
     os.makedirs("outputs", exist_ok=True)
     excel_path = f"outputs/{company_name}.xlsx"
 
@@ -141,7 +167,6 @@ def process_company(pdf_path: str, company_name: str, report_year: str):
             # Read existing sheet if it exists
             try:
                 existing_df = pd.read_excel(excel_path, sheet_name=statement_type[:31])
-                # merged_df = pd.merge(existing_df, new_df, on="Line Item", how="outer")
                 # Preserve original row order from existing_df
                 existing_df["__order"] = range(len(existing_df))
 

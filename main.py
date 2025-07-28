@@ -1,35 +1,38 @@
+from utils.acquire_pdf import download_pdf, get_pdf_links
 from utils.extract_statements import process_company, process_company_multi_year
 from utils.constants import COMPANIES
 from utils.post_process import prune_excel_to_numeric_rows
 import os
 import re
+from collections import OrderedDict
+
+def get_year_to_pdf_map(pdf_paths, base_dir):
+    year_to_path = {}
+
+    # Extract year from filename and store in dictionary
+    for filename in pdf_paths:
+        match = re.search(r'_(\d{4})\.pdf$', filename)
+        if match:
+            year = int(match.group(1))
+            full_path = os.path.join(base_dir, filename)
+            year_to_path[year] = os.path.abspath(full_path)
+
+    # Create an ordered dict sorted from most recent to oldest
+    sorted_dict = OrderedDict(sorted(year_to_path.items(), key=lambda x: x[0], reverse=True))
+    return sorted_dict
+
 
 if __name__ == "__main__":
-    company = COMPANIES[0]
-    print(f"Processing {company['name']}...")
-    # files = os.listdir("/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson")
-    # for file in files:
-    #     abs_file_path = os.path.abspath(f"/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/{file}")
-    #     # Attempt to extract the year from the filename (e.g., ..._2024.pdf)
-    #     match = re.search(r'(\d{4})', file)
-    #     year = match.group(1) if match else "Unknown"
-    #     print(year)
-    #     print(file)
-    #     process_company(abs_file_path, company['name'], year)
-    # # postprocess_excel(f"/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/NASDAQ_ERIC_2024.pdf", company['name'], "2024", f"/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/outputs/Ericsson_og.xlsx")
-    # # find_statement_schema(f"/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/NASDAQ_ERIC_2024.pdf", "Income Statement", "2024")
-
-    # list_of_pdfs = {
-    #     "2024": "/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/NASDAQ_ERIC_2024.pdf",
-    #     "2023": "/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/NASDAQ_ERIC_2023.pdf",
-    #     # "2022": "/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/annual_report_pdfs/Ericsson/NASDAQ_ERIC_2022.pdf"
-    # }
-    
-    # # process_company_multi_year(list_of_pdfs, company['name'])
-    # for year, pdf_path in list_of_pdfs.items():
-    #     process_company(pdf_path, company['name'], year)
-
-
-    prune_excel_to_numeric_rows("/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/outputs/Ericsson.xlsx", "/Users/jaredmatthews/Programming/Projects/Fiscal.ai_Assessment/cleaned_outputs/Ericsson_cleaned.xlsx")
+    for company in COMPANIES:
+        print(f"Processing {company['name']}...")
+        pdf_links = get_pdf_links(company['annual_reports_url'])
+        for pdf_link in pdf_links:
+            download_pdf(pdf_link, "annual_report_pdfs", company['name'])
+        company_dir = f"./annual_report_pdfs/{company['name']}"
+        pdf_list = os.listdir(company_dir)
+        year_pdf_map = get_year_to_pdf_map(pdf_list, company_dir)
+        for year, pdf_path in year_pdf_map.items():
+            process_company(pdf_path, company['name'], year)
+        prune_excel_to_numeric_rows(f"./outputs/{company['name']}.xlsx", f"./cleaned_outputs/{company['name']}.xlsx")
 
     

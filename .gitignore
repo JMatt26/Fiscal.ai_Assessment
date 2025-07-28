@@ -1,10 +1,4 @@
 .env
 .venv*
-trash.py 
-trial.py 
-annual_report_pdfs
-reports
 __pycache__
 *__pycache__
-outputs
-cleaned_outputs
