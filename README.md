@@ -32,3 +32,4 @@ Once the initial Excel sheet is made, it is pruned for any values that are non-n
 - In order to enhance this code, the data needs to go through several for phases of post-processing, as well as more extensive pre-processing.
   - One possible solution would be to train an LLM with annual reports and the correct schemas, allowing for possible use of said agent on a universal level afterwards.
   - Another solution would be to build a schema for the three financial solutions for all of the data that is wanted universally, then implement some sort of weight system for other line items that are identified, and if they pass a certain *importance weight*, then they are added as to that statement.
+  - LLMWhisperer is a potential text-extraction service that may be used to process the annual reports, providing easier isolation for the financial statement table isolation. 
